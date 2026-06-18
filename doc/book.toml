@@ -1,0 +1,19 @@
+[book]
+authors = ["Huy-DNA"]
+language = "en"
+src = "src"
+title = "Diraw"
+
+[preprocessor]
+
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
+[output]
+
+[output.html]
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
+
+[output.html.fold]
+enable = true
+level = 2

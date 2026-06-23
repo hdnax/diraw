@@ -8,3 +8,5 @@
 - Pipeline: An internal GPU pipeline containing the vertex shader and/or fragment shader. [source](https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-draw-diagram)
 - Bind group: A handle for shaders to access resources indirectly. [source](https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-draw-diagram)
 - Render pass discription.
+- Command buffer: A buffer in GPU that contain commands to execute.
+- Command encoders: A program/function used to encode commands into the command buffer.

@@ -58,4 +58,10 @@ The webgpufundamentals article provides the following visualization and more det
   1. The attributes read data from the buffers.
   2. The attributes feed data into the vertex shader.
   3. The vertex shader may feed data into the fragment shader.
-  4. The fragment shaders use the render pass description to write to textures.
+  4. The fragment shaders use the **render pass description** to write to **textures**.
+- Command buffers: Contain instructions for the GPU to execute.
+  - Command encoder: Commands are encoded (like compiled) into the command buffer.
+  - "Finish the encoder": The act of yielding the command buffer from the encoder.
+  - "Submit the buffer": To have WebGPU execute the commands.
+
+> Most WebGPU resources cannot be changed after creation. Contents may be changable though. We will need to recreate the resource if we want to change.

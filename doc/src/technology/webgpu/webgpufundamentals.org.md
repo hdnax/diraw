@@ -49,6 +49,8 @@ The webgpufundamentals article provides the following visualization and more det
 
 ![Simplified diagram of WebGPU setup](./webgpufundamentals-webgpu-draw.svg)
 
+> Remark: In retrospect, this diagram represents the internal setup of GPU when at a "draw" command in the command buffer (shown in the next visualization). The "draw" command will trigger the GPU to execute a vertex shader.
+
 - Pipeline: Containing the shaders the GPU will run. Besides that, the pipeline contains **attributes that reference buffers indirectly**. Attributes contain pointers to:
   - Vertex buffer.
   - Index buffer.
@@ -59,9 +61,22 @@ The webgpufundamentals article provides the following visualization and more det
   2. The attributes feed data into the vertex shader.
   3. The vertex shader may feed data into the fragment shader.
   4. The fragment shaders use the **render pass description** to write to **textures**.
-- Command buffers: Contain instructions for the GPU to execute.
+- Command buffers: Contain instructions for the GPU to execute. (See below)
   - Command encoder: Commands are encoded (like compiled) into the command buffer.
   - "Finish the encoder": The act of yielding the command buffer from the encoder.
   - "Submit the buffer": To have WebGPU execute the commands.
 
 > Most WebGPU resources cannot be changed after creation. Contents may be changable though. We will need to recreate the resource if we want to change.
+
+The following visualization about command buffers is from the page:
+
+![Multiple render passes & Encoding to the command buffer](./webgpufundamentals-command-buffers.png)
+
+In the image above:
+
+1. A command encoder is created.
+2. Multiple render passes are created, inside each are some draw instructions.
+3. The command buffer is built by triggering encoder finish.
+4. As we can see, the output command buffers contain all render passed in one.
+
+> Remark: This picture is the zoomed-out version of the diagram above. The "draw" command will setup the GPU's internal state similarly to that diagram.

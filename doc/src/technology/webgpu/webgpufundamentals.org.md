@@ -277,3 +277,156 @@ After initialization:
    - `pass.draw(3)` invokes the vertex shader 3 times, which by convention produces one triangle. Calling `draw(6)` would produce two triangles.
    - `setPipeline`, `draw`, and similar calls do not execute immediately. They only record commands into the command buffer. The GPU sees the work only when `device.queue.submit(...)` is called, which lets the driver batch and optimize the full sequence before sending anything to the hardware.
    - `encoder.finish()` seals the buffer, after which no more commands can be added and a new encoder would be needed.
+
+#### Running Computations on the GPU
+
+Link: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-run-computations-on-the-gpu
+
+The setup is identical to the triangle example: acquire an adapter and device. The difference starts at the shader module.
+
+1. Create a **shader module** with a **compute shader**.
+
+   ```javascript
+   const module = device.createShaderModule({
+     label: "doubling compute module",
+     code: /* wgsl */ `
+       @group(0) @binding(0) var<storage, read_write> data: array<f32>;
+   
+       @compute @workgroup_size(1) fn computeSomething(
+         @builtin(global_invocation_id) id: vec3u
+       ) {
+         let i = id.x;
+         data[i] = data[i] * 2.0;
+       }
+     `,
+   });
+   ```
+
+   - `var<storage, read_write>` declares a buffer that the shader can both read from and write to. The `@group(0) @binding(0)` annotations tell the shader where to find it, to be wired up from JS later.
+   - `@compute @workgroup_size(1)` marks the function as a compute shader entry point. `workgroup_size(1)` means each workgroup consists of a single invocation. This can be tuned for performance.
+   - `@builtin(global_invocation_id)` gives each invocation a unique 3D index across all dispatched workgroups. Using `id.x` flattens it to a 1D index, which maps directly to an array position.
+
+   The site provides a helpful pseudocode breakdown of how `dispatchWorkgroups` works:
+
+   ```javascript
+   // pseudo code
+
+   // dispatchWorkgroups iterates over a 3D grid of workgroups.
+   // Each cell in the grid becomes one workgroup_id passed to dispatchWorkgroup.
+   function dispatchWorkgroups(width, height, depth) {
+     for (z = 0; z < depth; ++z)
+       for (y = 0; y < height; ++y)
+         for (x = 0; x < width; ++x) dispatchWorkgroup({ x, y, z }); // launch one workgroup at this grid position
+   }
+
+   // dispatchWorkgroup runs all invocations within a single workgroup.
+   // The workgroup_size comes from @workgroup_size(x, y, z) in the shader.
+   // Each invocation gets a local_invocation_id within the workgroup,
+   // and a global_invocation_id that is unique across all workgroups.
+   function dispatchWorkgroup(workgroup_id) {
+     const { x: w, y: h, z: d } = shaderCode.workgroup_size;
+     for (z = 0; z < d; ++z)
+       for (y = 0; y < h; ++y)
+         for (x = 0; x < w; ++x) {
+           const local_invocation_id = { x, y, z }; // position within this workgroup
+           const global_invocation_id =
+             workgroup_id * workgroup_size + local_invocation_id; // unique position across all workgroups
+           computeShader(global_invocation_id); // run the shader for this invocation
+         }
+   }
+   ```
+
+   Since we used `@workgroup_size(1)`, each workgroup is exactly one invocation, so `global_invocation_id` equals `workgroup_id` directly. `id.x` then gives us a simple 1D loop index over the data array.
+
+2. Create a compute pipeline.
+
+   ```javascript
+   const pipeline = device.createComputePipeline({
+     label: "doubling compute pipeline",
+     layout: "auto",
+     compute: { module },
+   });
+   ```
+
+   This is the compute equivalent of `createRenderPipeline`. There is no `vertex` or `fragment` stage, just `compute`.
+
+3. Create buffers and upload input data.
+
+   ```javascript
+   const input = new Float32Array([1, 3, 5]);
+
+   const workBuffer = device.createBuffer({
+     label: "work buffer",
+     size: input.byteLength,
+     usage:
+       GPUBufferUsage.STORAGE |
+       GPUBufferUsage.COPY_SRC |
+       GPUBufferUsage.COPY_DST,
+   });
+   device.queue.writeBuffer(workBuffer, 0, input);
+
+   const resultBuffer = device.createBuffer({
+     label: "result buffer",
+     size: input.byteLength,
+     usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+   });
+   ```
+
+   - `STORAGE` is required for the buffer to be usable as a `var<storage,...>` in the shader.
+   - `COPY_SRC` and `COPY_DST` are needed to copy data between buffers.
+   - A separate `resultBuffer` is needed because GPU buffers cannot be directly read from JS. Only buffers created with `MAP_READ` can be mapped, and a buffer cannot have both `STORAGE` and `MAP_READ` usage at the same time, hence the two-buffer design.
+
+4. Create a bind group to wire the buffer to the shader.
+
+   ```javascript
+   const bindGroup = device.createBindGroup({
+     label: "bindGroup for work buffer",
+     layout: pipeline.getBindGroupLayout(0),
+     entries: [{ binding: 0, resource: workBuffer }],
+   });
+   ```
+
+   - `getBindGroupLayout(0)` retrieves the layout for `@group(0)` from the pipeline. This mirrors how `targets` in the render pipeline mirrored `@location(n)` in the fragment shader.
+   - `binding: 0` corresponds to `@binding(0)` in the shader.
+
+5. Encode and submit.
+
+   ```javascript
+   const encoder = device.createCommandEncoder({ label: "doubling encoder" });
+   const pass = encoder.beginComputePass({ label: "doubling compute pass" });
+   pass.setPipeline(pipeline);
+   pass.setBindGroup(0, bindGroup);
+   pass.dispatchWorkgroups(input.length);
+   pass.end();
+
+   encoder.copyBufferToBuffer(
+     workBuffer,
+     0,
+     resultBuffer,
+     0,
+     resultBuffer.size,
+   );
+
+   device.queue.submit([encoder.finish()]);
+   ```
+
+   - `dispatchWorkgroups(3)` runs the compute shader 3 times, once per element. Each invocation gets a different `global_invocation_id`, so `id.x` will be 0, 1, and 2 respectively.
+   - `copyBufferToBuffer` is recorded as a command in the same encoder, after the compute pass. This means the copy happens after the compute shader finishes, within the same submission.
+
+6. Read back the result.
+
+   ```javascript
+   await resultBuffer.mapAsync(GPUMapMode.READ);
+   const result = new Float32Array(resultBuffer.getMappedRange());
+   console.log("input", input);
+   console.log("result", result);
+   resultBuffer.unmap();
+   ```
+
+   - `mapAsync` is asynchronous because it waits for the GPU to finish executing the submitted commands before making the buffer accessible to JS.
+   - `getMappedRange()` returns an `ArrayBuffer` view into the mapped memory. Wrapping it in `Float32Array` gives typed access.
+   - `unmap()` must be called when done. The mapped view becomes invalid after this point.
+
+   > Remark: The two-buffer pattern (`workBuffer` for GPU, `resultBuffer` for readback) is a recurring pattern in compute workflows. The GPU cannot write to a mappable buffer directly, so you compute into a `STORAGE` buffer and then copy to a `MAP_READ` buffer.
+
+> Takeaway: WebGPU just runs shaders. Everything useful is built on top of that. What makes it powerful is that these shaders run on the GPU, which can have over 10,000 processors. That means potentially more than 10,000 calculations in parallel, which is likely 3 or more orders of magnitude more than a CPU can do in parallel.

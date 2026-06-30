@@ -22,6 +22,10 @@ _Data runtime entities_
 - Render target: A texture the GPU writes fragment shader output into at the end of a render pass. [source](https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-drawing-triangles-to-textures)
 - Vertex buffer: A buffer holding per-vertex data (positions, colors, UVs, etc.) that the pipeline reads and feeds into the vertex shader. [source](https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-draw-diagram)
 
+_Compute_
+
+- Workgroup: A group of compute shader invocations that execute together and can share memory and synchronize with each other. You dispatch N workgroups via `dispatchWorkgroups(N)`, and each workgroup contains a fixed number of invocations defined by `@workgroup_size`. [source](https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-run-computations-on-the-gpu)
+
 _Executable runtime entities_
 
 - Render pass: A recorded sequence of draw commands targeting a set of render targets. Multiple render passes can be encoded into one command buffer. [source](https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-draw-diagram)

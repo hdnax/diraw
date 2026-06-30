@@ -430,3 +430,37 @@ The setup is identical to the triangle example: acquire an adapter and device. T
    > Remark: The two-buffer pattern (`workBuffer` for GPU, `resultBuffer` for readback) is a recurring pattern in compute workflows. The GPU cannot write to a mappable buffer directly, so you compute into a `STORAGE` buffer and then copy to a `MAP_READ` buffer.
 
 > Takeaway: WebGPU just runs shaders. Everything useful is built on top of that. What makes it powerful is that these shaders run on the GPU, which can have over 10,000 processors. That means potentially more than 10,000 calculations in parallel, which is likely 3 or more orders of magnitude more than a CPU can do in parallel.
+
+#### Pitfall: Canvas Resizing
+
+Link: https://webgpufundamentals.org/webgpu/lessons/webgpu-fundamentals.html#a-resizing
+
+CSS can make a canvas visually fill the page, but it does not change the canvas's actual resolution. The default canvas size is 300x150 pixels, so stretching it with CSS just produces a blurry, pixelated result. To fix this, you need to update `canvas.width` and `canvas.height` in response to size changes.
+
+The correct approach is to use a `ResizeObserver`:
+
+```javascript
+const observer = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const canvas = entry.target;
+    const width = entry.contentBoxSize[0].inlineSize;
+    const height = entry.contentBoxSize[0].blockSize;
+    canvas.width = Math.max(
+      1,
+      Math.min(width, device.limits.maxTextureDimension2D),
+    );
+    canvas.height = Math.max(
+      1,
+      Math.min(height, device.limits.maxTextureDimension2D),
+    );
+  }
+  render();
+});
+observer.observe(canvas);
+```
+
+- Canvas dimensions must be clamped between `1` and `device.limits.maxTextureDimension2D`. Setting a size of `0` or exceeding the device limit causes a WebGPU error.
+- The observer fires at least once on initialization, so calling `render()` inside it covers the first frame.
+- `context.getCurrentTexture()` inside `render()` always returns a texture matching the current canvas size, so no other changes are needed.
+
+> Remark: This approach does not handle high-DPI displays or zoom level changes. Those cases require reading `devicePixelRatio` and are covered in a dedicated resizing article.
